@@ -1,1 +1,4 @@
 node_modules/
+__pycache__/
+arxiv-metadata-oai-snapshot.json
+database.db
