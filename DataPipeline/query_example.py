@@ -2,8 +2,9 @@ import pickle
 import math
 import os
 from utils import preprocess, weighted_bm25_query
+import time
 # Function to load the precomputed inverted indexes and document lengths
-def load_data(pkl_direcory='DataPipeline/', fields = ['title', 'abstract', 'authors']):
+def load_data(pkl_direcory='DataPipeline/', fields = ['title', 'abstract']):
     inverted_indexes = {}
     doc_lengths = {}
     
@@ -23,13 +24,17 @@ def load_data(pkl_direcory='DataPipeline/', fields = ['title', 'abstract', 'auth
 # you are free to change the directory to where you saved the pkl files
 # generating the inverted indexes and document lengths for the 3 given fields is time-consuming (70 minutes on my machine)
 # may use the precomputed files I provided
-inverted_indexes, doc_lengths = load_data('./100000_subset', fields=['title', 'abstract', 'authors'])
+# calculate time lapse for the whole process
+timer = time.time()
+inverted_indexes, doc_lengths = load_data('./', fields=['title', 'abstract'])
 # config weights for each field, feel free to tweak
-field_weights = {'title': 0.3, 'abstract': 0.4, 'authors': 0.3}
+field_weights = {'title': 0.3, 'abstract': 0.4}
+# set keys should align with the fields in the inverted_indexes and doc_lengths
 # preprocessed query terms
 query_terms = preprocess("machine learning").split()
 sorted_scores = weighted_bm25_query(query_terms, inverted_indexes, doc_lengths, field_weights)
 print(sorted_scores[:10]) 
+print("Time elapsed:", time.time() - timer)
 # example output:
 # doc_id, score kv pairs
 # [('0803.2976', 13.753191141017297), 
