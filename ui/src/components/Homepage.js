@@ -1,4 +1,4 @@
-import { Box, TextInput, Title, Text, Button, MultiSelect, Container, Grid, Paper, List, ListItem, ActionIcon, Pagination } from '@mantine/core';
+import { Container, TextInput, Title, Text, Button, MultiSelect, Paper, List, ListItem, ActionIcon, Pagination, Anchor } from '@mantine/core';
 import { useState, useEffect } from "react";
 import axios from "axios";
 import { Trash } from 'tabler-icons-react';
@@ -12,13 +12,6 @@ function Homepage() {
     const [currentPage, setCurrentPage] = useState(1);
     const resultsPerPage = 10;
 
-    // useEffect(() => {
-    //     axios.get(`http://localhost:8000/papers`)
-    //         .then((res) => {
-    //             setAllPapers(res.data);
-    //         });
-    // }, []);
-
     useEffect(() => {
         localStorage.setItem("searchHistory", JSON.stringify(searchHistory));
     }, [searchHistory]);
@@ -28,10 +21,11 @@ function Homepage() {
             keywords,
             selected_papers: selectedPapers,
         };
-        setSearchHistory([...searchHistory, { keywords, selectedPapers }]);
+        setSearchHistory([...searchHistory, data]);
         axios.post(`http://localhost:8000/query`, data)
             .then((res) => {
-                setAllPapers(res.data); // Assuming res.data is the array of papers returned by the search 
+                // Ensure allPapers is set to an array
+                setAllPapers(Array.isArray(res.data) ? res.data : []);
             });
     };
 
@@ -44,7 +38,21 @@ function Homepage() {
         setSearchHistory([]);
     };
 
+    const loadHistory = (history) => {
+        setKeywords(history.keywords || "");
+        setSelectedPapers(history.selected_papers || []);
+    };
+
+    const addToSelectedPapers = (paper) => {
+        if (!selectedPapers.find(p => p.id === paper.id)) {
+            setSelectedPapers([...selectedPapers, paper]);
+        }
+    };
+
     const paginateResults = (papers) => {
+        if (!Array.isArray(papers)) {
+            return [];  // Return an empty array if papers is not an array
+        }
         const offset = (currentPage - 1) * resultsPerPage;
         return papers.slice(offset, offset + resultsPerPage);
     };
@@ -65,10 +73,9 @@ function Homepage() {
                 placeholder="Select the most relevant papers"
                 searchValue={paperSearchValue}
                 onSearchChange={setPaperSearchValue}
-                limit={25}
-                data={allPapers}
-                value={selectedPapers}
-                onChange={setSelectedPapers}
+                data={selectedPapers}
+                value={selectedPapers.map(p => p.title)}
+                onChange={value => setSelectedPapers(allPapers.filter(p => value.includes(p.title)))}
                 clearable
                 searchable
             />
@@ -80,7 +87,11 @@ function Homepage() {
                 <Title order={3}>Search Results</Title>
                 <List>
                     {paginateResults(allPapers).map((paper, index) => (
-                        <ListItem key={index}>{paper.title}</ListItem>
+                        <ListItem key={index}>
+                            {paper.title}
+                            <Anchor href={paper.url} target="_blank" style={{ marginLeft: 10 }}>View Paper</Anchor>
+                            <Button onClick={() => addToSelectedPapers(paper)} size="xs" style={{ marginLeft: 5 }}>Add</Button>
+                        </ListItem>
                     ))}
                 </List>
                 <Pagination 
@@ -94,9 +105,9 @@ function Homepage() {
                 <Title order={3}>Search History</Title>
                 <List>
                     {searchHistory.slice(-10).map((history, index) => (
-                        <ListItem key={index}>
-                            {history.keywords}
-                            <ActionIcon onClick={() => deleteHistory(index)}>
+                        <ListItem key={index} onClick={() => loadHistory(history)} style={{ cursor: 'pointer' }}>
+                            Query: {history.keywords}, Papers: {(history.selected_papers || []).map(p => p.title).join(', ')}
+                            <ActionIcon onClick={(e) => { e.stopPropagation(); deleteHistory(index); }}>
                                 <Trash size={16} />
                             </ActionIcon>
                         </ListItem>
