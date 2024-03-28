@@ -1,10 +1,13 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List
+from typing import Annotated, List
+import json
 from urllib.parse import unquote
 from db.utils import preprocess
-from db.db_queries import query, get_all_paper_titles, get_all_matching_paper_titles, get_preprocessed_papers_by_title
+from db.db_queries import create_session, create_session_history, get_history_for_session, get_paper_by_id, query, get_all_paper_titles, get_all_matching_paper_titles, get_preprocessed_papers_by_title, get_all_sessions
+from utils import load_data, weighted_bm25_query
 
 app = FastAPI()
 
@@ -16,6 +19,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+inverted_indexes, doc_lengths = load_data('./db/inverted_index', fields=['title', 'abstract'])
+
 @app.get("/papers")
 def get_papers(paper_query=None):
     if paper_query:
@@ -26,32 +31,68 @@ def get_papers(paper_query=None):
         results = [row[0] for row in query(get_all_paper_titles)]
     return results
 
+@app.get("/sessions")
+def get_sessions():
+    return [str(row[0]) for row in query(get_all_sessions)]
+
 class QueryItems(BaseModel):
     keywords: str
     selected_papers: List[str]
 
-@app.post("/query")
-def make_query(query_items: QueryItems):
-    # Parse query
-    query_keywords = preprocess(query_items.keywords)
-    # Parse added documents (if any)
-    selected_papers = [{
-        "title": row[0],
-        "authors": row[1],
-        "abstract": row[2],
-    } for row in query(lambda x: get_preprocessed_papers_by_title(x, query_items.selected_papers))]
-    # Apply preprocessing
-    return {"keywords": query_keywords, "selected_papers": selected_papers}
+@app.get("/session/{session_id}")
+def get_session_history(session_id):
+    return [{
+        "id": row[0],
+        "timestamp": row[2],
+        "query": json.loads(row[3]),
+    } for row in query(lambda x: get_history_for_session(x, session_id))]
 
-    # return {"documents": [
-    #     {
-    #         "title": f"Title {i}",
-    #         "authors": f"Author {i}",
-    #         "abstract": f"Abstract {i}",
-    #         "link": f"arxiv.com/{i}",
-    #     }
-    #     for i in range(3)
-    # ]}
+@app.get("/query")
+def make_query(session_id: Annotated[int | None, Query()] = None, keywords: Annotated[str, Query()] = "", selected_papers: Annotated[list[str], Query()] = []):
+    print(session_id, keywords, selected_papers)
+    if len(selected_papers) == 0 and len(keywords) == 0:
+        return []
+    if session_id is None:
+        session_id = query(lambda x: create_session(x))
+    else:
+        session_id = int(session_id)
+    full_query = []
+
+    # Parse query
+    query_keywords = preprocess(keywords)
+
+    # Parse added documents (if any)
+    full_query.extend(query_keywords)
+    for row in query(lambda x: get_preprocessed_papers_by_title(x, selected_papers)):
+        title = row[0]
+        authors = row[1]
+        abstract = row[2]
+        full_query.extend(preprocess(title).split())
+        full_query.extend(preprocess(abstract).split())
+        full_query.extend(preprocess(authors).split())
+    
+    field_weights = {'title': 0.3, 'abstract': 0.4}
+    sorted_scores = weighted_bm25_query(full_query, inverted_indexes, doc_lengths, field_weights)
+    
+    relevant_docs = []
+    for doc_id, score in sorted_scores:
+        if score > 0:
+            doc = query(lambda x: get_paper_by_id(x, doc_id))
+            if len(doc) == 1:
+                doc = doc[0]
+                title = doc[1]
+                authors = doc[2]
+                abstract = doc[3]
+                relevant_docs.append({
+                    "score": score,
+                    "link":f"https://arxiv.org/abs/{doc_id}",
+                    "title": title,
+                    "authors": authors,
+                    "abstract": abstract,
+                })
+    query(lambda x: create_session_history(x, session_id, keywords, selected_papers))
+    return { "docs": relevant_docs, "session_id": str(session_id) }
+
 
 if __name__ == "__main__":
     import uvicorn

@@ -1,10 +1,13 @@
 import json
 import os
+import time
 import sqlite3
 from sqlite3 import Error
 import traceback
 from utils import preprocess
 from db_queries import DB_PATH, N_PAPERS
+
+EARLY_STOP = 10000
 
 if os.path.exists(DB_PATH):
     os.remove(DB_PATH)
@@ -56,15 +59,30 @@ try:
     conn = sqlite3.connect(DB_PATH)
 
     sql_create_papers_table = """ CREATE TABLE IF NOT EXISTS papers (
-                                        id text NOT NULL PRIMARY KEY,
-                                        title text NOT NULL,
-                                        authors text NOT NULL,
-                                        abstract text NOT NULL,
-                                        preprocessed_title text NOT NULL,
-                                        preprocessed_authors text NOT NULL,
-                                        preprocessed_abstract text NOT NULL
-                                    ); """
+        id text NOT NULL PRIMARY KEY,
+        title text NOT NULL,
+        authors text NOT NULL,
+        abstract text NOT NULL,
+        preprocessed_title text NOT NULL,
+        preprocessed_authors text NOT NULL,
+        preprocessed_abstract text NOT NULL
+    ); """
     create_table(conn, sql_create_papers_table)
+
+    sql_create_session_table = """ CREATE TABLE IF NOT EXISTS session (
+        id integer NOT NULL PRIMARY KEY
+    ); """
+    create_table(conn, sql_create_session_table)
+
+    sql_create_session_history_table = """ CREATE TABLE IF NOT EXISTS session_history (
+        id integer NOT NULL PRIMARY KEY,
+        session_id integer NOT NULL,
+        created_at timestamp NOT NULL,
+        query text NOT NULL
+    ); """
+    create_table(conn, sql_create_session_history_table)
+    
+    start = time.time()
     i = 0
     with open('arxiv-metadata-oai-snapshot.json') as f:
         for line in f:
@@ -88,12 +106,18 @@ try:
             preprocessed_title = preprocess(title)
             preprocessed_authors = authors.lower()
             preprocessed_abstract = preprocess(abstract)
-            create_paper(conn, (id, title, authors, abstract, preprocessed_title, preprocessed_authors, preprocessed_abstract))
+            try:
+                create_paper(conn, (id, title, authors, abstract, preprocessed_title, preprocessed_authors, preprocessed_abstract))
+            except Error as e:
+                print(traceback.format_exc())
             i += 1
             print(f"\rProcessed {i} out of {N_PAPERS} papers ({i/N_PAPERS * 100:0.3f}%).", end="")
-            if i == 500:
+            if i == EARLY_STOP:
                 break
+    print(f"\nTook {time.time() - start:0.3f}s to process {i} papers.")
+    start = time.time()
     remove_duplicates(conn)
+    print(f"Took {time.time() - start:0.3f}s to deduplicate {i} papers.")
 except Error as e:
     print(traceback.format_exc())
 finally:

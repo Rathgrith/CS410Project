@@ -1,121 +1,247 @@
-import { Container, TextInput, Title, Text, Button, MultiSelect, Paper, List, ListItem, ActionIcon, Pagination, Anchor } from '@mantine/core';
+import { Box, TextInput, Title, Text, Button, Select, MultiSelect, Loader, Pagination, Stack, Card, Group, Badge, Anchor } from '@mantine/core';
 import { useState, useEffect } from "react";
 import axios from "axios";
-import { Trash } from 'tabler-icons-react';
 
 function Homepage() {
+    // Sessioning
+    const [sessionId, setSessionId] = useState({ value: "New Session", label: "New Session" });
+    const [allSessions, setAllSessions] = useState(["New Session"]);
+    // Session History
+    const [sessionHistory, setSessionHistory] = useState([]);
+    // User query
     const [keywords, setKeywords] = useState("");
     const [selectedPapers, setSelectedPapers] = useState([]);
+    // Values for selected paper dropdown
     const [allPapers, setAllPapers] = useState([]);
-    const [paperSearchValue, setPaperSearchValue] = useState("");
-    const [searchHistory, setSearchHistory] = useState(() => JSON.parse(localStorage.getItem("searchHistory")) || []);
-    const [currentPage, setCurrentPage] = useState(1);
-    const resultsPerPage = 10;
+    const [paperSearchValue, setPaperSearchValue] = useState([]);
+    // Results
+    // Pagination
+    const [itemsPerPage, setItemsPerPage] = useState(25);
+    const [activePage, setPage] = useState(1);
+    // Whether to show the Search Results section
+    const [newSearch, setNewSearch] = useState(true);
+    // Whether to show the loading bars
+    const [searching, setSearching] = useState(false);
+    // List of all papers
+    const [resultPapers, setResultPapers] = useState([]);
 
+    const renderSessionHistory = (data) => {
+        setSessionHistory(data.map((item) => {
+            return (
+                <Card shadow="sm" padding="lg" radius="md" withBorder key={item.id}>
+                    {item.query.keywords.length > 0 && (
+                        <Group mb="xs">
+                            <Text fw={700}>Keywords:</Text>
+                            <Text size="sm" c="dimmed">
+                                {item.query.keywords}
+                            </Text>
+                        </Group>
+                    )}
+
+                    {item.query.selected_papers.length > 0 && (
+                        <Group mb="xs">
+                            <Text fw={700}>Related Papers:</Text>
+                            {item.query.selected_papers.map((v) => <Badge color="gray">{v}</Badge>)}
+                        </Group>
+                    )}
+                </Card>
+            )
+        }));   
+    }
+
+    // Get all papers (first 1000) to search among for the relevant papers search dropdown
     useEffect(() => {
-        localStorage.setItem("searchHistory", JSON.stringify(searchHistory));
-    }, [searchHistory]);
+        axios.get(
+            `http://localhost:8000/papers`
+        )
+        .then((res) => {
+            setAllPapers(res.data);
+        });
+        axios.get(
+            `http://localhost:8000/sessions`
+        )
+        .then((res) => {
+            const preprocessedSessions = res.data.map((data) => ({ 
+                value: data, 
+                label: `Session ${data}` 
+            }))
+            preprocessedSessions.push({ 
+                value: "New Session", 
+                label: "New Session" 
+            });
+            setAllSessions(preprocessedSessions);
+        });
+        if (sessionId.value !== "New Session") {
+            axios.get(
+                `http://localhost:8000/session/${sessionId.value}`
+            )
+            .then((res) => {
+                console.log(res.data);
+                renderSessionHistory(res.data);
+            });
+        }
+    }, []);
 
-    const submit = () => {
+    // Update session metadata
+    useEffect(() => {
+        axios.get(
+            `http://localhost:8000/sessions`
+        )
+        .then((res) => {
+            const preprocessedSessions = res.data.map((data) => ({ 
+                value: data, 
+                label: `Session ${data}` 
+            }))
+            preprocessedSessions.push({ 
+                value: "New Session", 
+                label: "New Session" 
+            });
+            setAllSessions(preprocessedSessions);
+        });
+        if (sessionId.value !== "New Session") {
+            axios.get(
+                `http://localhost:8000/session/${sessionId.value}`
+            )
+            .then((res) => {
+                renderSessionHistory(res.data);
+            });
+        };
+    }, [resultPapers, sessionId]);
+
+    // As the search gets refined, update the papers list to only include papers with the search term as a substring
+    useEffect(() => {
+        setNewSearch(true);
+        if (paperSearchValue.length > 1) {
+            // Every time `paperSearchValue` is updated, query backend to update the data to filter from.
+            axios.get(
+                `http://localhost:8000/papers`,
+                { paper_query: paperSearchValue }
+            )
+            .then((res) => {
+                setAllPapers(res.data);
+            });
+        }
+    }, [paperSearchValue]);
+    
+    useEffect(() => {
+        setNewSearch(true);
+    }, [keywords]);
+
+    // Send query (keywords and relevant papers) to the backend
+    const submit = async () => {
         const data = {
             keywords,
             selected_papers: selectedPapers,
+            session_id: sessionId.value,
         };
-        setSearchHistory([...searchHistory, data]);
-        axios.post(`http://localhost:8000/query`, data)
-            .then((res) => {
-                // Ensure allPapers is set to an array
-                setAllPapers(Array.isArray(res.data) ? res.data : []);
-            });
+        
+        setSearching(true);
+        setNewSearch(false);
+        axios.get(
+            `http://localhost:8000/query`,
+            { 
+                params: data,
+                paramsSerializer: {
+                    indexes: null, // no brackets at all
+                } ,
+            }
+        )
+        .then((response) => {
+            setResultPapers(response.data.docs);
+            setSessionId({ value: response.data.session_id, label: `Session ${response.data.session_id}` });
+            setSearching(false);
+        });
     };
 
-    const deleteHistory = (index) => {
-        const newHistory = searchHistory.filter((_, i) => i !== index);
-        setSearchHistory(newHistory);
-    };
+    const items = resultPapers.slice((activePage-1)*itemsPerPage, (activePage)*itemsPerPage).map((item) => (
+        <Card shadow="sm" padding="lg" radius="md" withBorder key={item.link}>
+            <Anchor href={item.link} target="_blank">
+                <Text fw={500}>{item.title}</Text>
+            </Anchor>
+            <Text size="xs" c="dimmed" mb="xs">
+                {item.authors}
+            </Text>
 
-    const clearHistory = () => {
-        setSearchHistory([]);
-    };
+            <Text size="sm" c="dimmed" mb="xs">
+                {item.abstract}
+            </Text>
 
-    const loadHistory = (history) => {
-        setKeywords(history.keywords || "");
-        setSelectedPapers(history.selected_papers || []);
-    };
+            <Group>
+                <Badge color="blue" variant="light">Score: {Number((item.score).toFixed(3))}</Badge>
+            </Group>
+        </Card>
+    ));
 
-    const addToSelectedPapers = (paper) => {
-        if (!selectedPapers.find(p => p.id === paper.id)) {
-            setSelectedPapers([...selectedPapers, paper]);
-        }
-    };
-
-    const paginateResults = (papers) => {
-        if (!Array.isArray(papers)) {
-            return [];  // Return an empty array if papers is not an array
-        }
-        const offset = (currentPage - 1) * resultsPerPage;
-        return papers.slice(offset, offset + resultsPerPage);
-    };
+    const paperList = (
+        <>
+            <Stack>
+                {items}
+            </Stack>
+            <Pagination total={resultPapers.length} value={activePage} onChange={setPage} mt="sm" />
+        </>
+    );
 
     return (
-        <Container>
-            <Title order={1} align="center" style={{ margin: '20px 0' }}>ArXiv Explorer</Title>
-            <Text align="center">Search 2440876 papers!</Text>
-
-            <TextInput
-                label="Query"
-                placeholder="Enter keywords here"
-                value={keywords}
-                onChange={(event) => setKeywords(event.target.value)}
-            />
-            <MultiSelect
-                label="Related Papers"
-                placeholder="Select the most relevant papers"
-                searchValue={paperSearchValue}
-                onSearchChange={setPaperSearchValue}
-                data={selectedPapers}
-                value={selectedPapers.map(p => p.title)}
-                onChange={value => setSelectedPapers(allPapers.filter(p => value.includes(p.title)))}
-                clearable
-                searchable
-            />
-            <Button variant="filled" onClick={submit} style={{ marginBottom: '20px' }}>
-                Search!
-            </Button>
-
-            <Paper style={{ padding: '20px', marginBottom: '20px' }}>
-                <Title order={3}>Search Results</Title>
-                <List>
-                    {paginateResults(allPapers).map((paper, index) => (
-                        <ListItem key={index}>
-                            {paper.title}
-                            <Anchor href={paper.url} target="_blank" style={{ marginLeft: 10 }}>View Paper</Anchor>
-                            <Button onClick={() => addToSelectedPapers(paper)} size="xs" style={{ marginLeft: 5 }}>Add</Button>
-                        </ListItem>
-                    ))}
-                </List>
-                <Pagination 
-                    page={currentPage} 
-                    onChange={setCurrentPage} 
-                    total={Math.ceil(allPapers.length / resultsPerPage)} 
-                />
-            </Paper>
-
-            <Paper style={{ padding: '20px' }}>
-                <Title order={3}>Search History</Title>
-                <List>
-                    {searchHistory.slice(-10).map((history, index) => (
-                        <ListItem key={index} onClick={() => loadHistory(history)} style={{ cursor: 'pointer' }}>
-                            Query: {history.keywords}, Papers: {(history.selected_papers || []).map(p => p.title).join(', ')}
-                            <ActionIcon onClick={(e) => { e.stopPropagation(); deleteHistory(index); }}>
-                                <Trash size={16} />
-                            </ActionIcon>
-                        </ListItem>
-                    ))}
-                </List>
-                <Button onClick={clearHistory} color="red">Clear History</Button>
-            </Paper>
-        </Container>
+    <Box style={{ 
+        marginLeft: "20vw", 
+        marginRight: "20vw", 
+        marginTop: "30px", 
+        marginBottom: "30px"
+    }}>
+        <Text
+            size="80px"
+            fw={900} 
+            order={1} 
+            variant="gradient"
+            gradient={{ from: 'blue', to: 'grape', deg: 90 }}
+        >
+            ArXiv Explorer
+        </Text>
+        <Text>Search 2M papers!</Text>
+        <Select
+            label="Session"
+            key="session"
+            defaultValue={"New Session"}
+            allowDeselect={false}
+            onChange={(_value, option) => setSessionId(option)}
+            data={allSessions}
+            disabled={searching}
+        />
+        <TextInput
+            label="Query"
+            key="query"
+            placeholder="Enter keywords here"
+            value={keywords}
+            onChange={(event)=>{setKeywords(event.target.value)}}
+            disabled={searching}
+        />
+        <MultiSelect
+            label="Related Papers"
+            key="papers"
+            placeholder="Select the most relevant papers"
+            searchValue={paperSearchValue}
+            onSearchChange={setPaperSearchValue}
+            limit={25}
+            data={allPapers}
+            value={selectedPapers}
+            onChange={setSelectedPapers}
+            disabled={searching}
+            clearable
+            searchable
+        />
+        <Button 
+            variant="filled" 
+            onClick={submit}
+            disabled={searching}
+        >
+            Search!
+        </Button>
+        {!newSearch && <Title order={2}>Search Results</Title>}
+        {!newSearch && searching && <Loader color="blue" type="bars" />}
+        {!newSearch && !searching && (resultPapers.length? paperList : "No results found.")}
+        {sessionHistory.length > 0 && <Title order={2}>Session History</Title>}
+        {sessionHistory.length > 0 && <Stack>{sessionHistory}</Stack>}
+    </Box>
     );
 }
 

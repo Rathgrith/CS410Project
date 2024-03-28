@@ -1,7 +1,7 @@
 To create UI:
 1. install pip
 2. `npm install react-router-dom axios`
-3. `Update 3/25: npm install npm install tabler-icons-react`
+3. `npm install tabler-icons-react`
 Follow this tutorial: https://medium.com/@lazyflous/building-a-full-stack-web-application-with-fastapi-and-react-171f704d3aab
 
 # Getting Started with Create React App
