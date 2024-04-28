@@ -40,3 +40,4 @@ wadllib==1.3.6
 zipp==1.0.0
 fastapi==0.110.0 
 uvicorn==0.28.0
+sentence_transformers==2.7.0

@@ -132,9 +132,8 @@ function Homepage() {
         const data = {
             keywords,
             selected_papers: selectedPapers,
-            session_id: sessionId.value,
+            session_id: sessionId.value === "New Session"? null : sessionId.value,
         };
-        
         setSearching(true);
         setNewSearch(false);
         axios.get(

@@ -7,7 +7,9 @@ import json
 from urllib.parse import unquote
 from db.utils import preprocess
 from db.db_queries import create_session, create_session_history, get_history_for_session, get_paper_by_id, query, get_all_paper_titles, get_all_matching_paper_titles, get_preprocessed_papers_by_title, get_all_sessions
-from utils import load_data, weighted_bm25_query
+from utils import ArxivSearch, compute_coauthor_graph, hits_reranking, load_data, weighted_bm25_query
+
+searcher = ArxivSearch()
 
 app = FastAPI()
 
@@ -71,25 +73,26 @@ def make_query(session_id: Annotated[int | None, Query()] = None, keywords: Anno
         full_query.extend(preprocess(abstract).split())
         full_query.extend(preprocess(authors).split())
     
-    field_weights = {'title': 0.3, 'abstract': 0.4}
-    sorted_scores = weighted_bm25_query(full_query, inverted_indexes, doc_lengths, field_weights)
+    top_k = 500
+    ids, scores = searcher.run_query(" ".join(full_query), top_k)
+    coauthor_graph = compute_coauthor_graph(ids)
+    reranked_ids = hits_reranking(coauthor_graph, ids, top_k)
     
     relevant_docs = []
-    for doc_id, score in sorted_scores:
-        if score > 0:
-            doc = query(lambda x: get_paper_by_id(x, doc_id))
-            if len(doc) == 1:
-                doc = doc[0]
-                title = doc[1]
-                authors = doc[2]
-                abstract = doc[3]
-                relevant_docs.append({
-                    "score": score,
-                    "link":f"https://arxiv.org/abs/{doc_id}",
-                    "title": title,
-                    "authors": authors,
-                    "abstract": abstract,
-                })
+    for doc_struct in reranked_ids:
+        doc = query(lambda x: get_paper_by_id(x, doc_struct["id"]))
+        if len(doc) == 1:
+            doc = doc[0]
+            title = doc[1]
+            authors = doc[2]
+            abstract = doc[3]
+            relevant_docs.append({
+                "score": doc_struct["score"],
+                "link":f"https://arxiv.org/abs/{doc_struct['id']}",
+                "title": title,
+                "authors": authors,
+                "abstract": abstract,
+            })
     query(lambda x: create_session_history(x, session_id, keywords, selected_papers))
     return { "docs": relevant_docs, "session_id": str(session_id) }
 

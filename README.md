@@ -15,5 +15,10 @@ If you had made the DB earlier, to update it with the new changes, simply run 00
 # Server
 ## To set up
 Install what it says is missing until everything is installed :)
+There is a requirements.txt that should have everything/most of it.
 ## To run
 python server.py
+
+# To Run
+After set up: Run UI, run server.
+Interact via webpage at http://localhost:3000
