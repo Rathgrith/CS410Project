@@ -141,7 +141,7 @@ class ArxivSearch:
         query_embedding = self.model.encode(query)
         scores, index_vals = self.faiss_index.search(query_embedding, top_k)
         index_vals_list = index_vals[0]
-        return index_vals_list, scores
+        return index_vals_list, scores[0]
     
     def match_idx_to_id(self, index_vals_list):
         pred_list = []
@@ -163,11 +163,11 @@ class ArxivSearch:
     def run_query(self, query_text, num_results_to_print):
         timer = time.time()
         preds, scores = self.run_arxiv_search(query_text, num_results_to_print)
-        print("Results:")
-        for pred in preds:
-            # print arxiv link based on id
-            print(f"https://arxiv.org/abs/{pred['id']}")
-        print("Time taken:", time.time() - timer)
+        # print("Results:")
+        # for pred in preds:
+        #     # print arxiv link based on id
+        #     print(f"https://arxiv.org/abs/{pred['id']}")
+        # print("Time taken:", time.time() - timer)
         return preds, scores
         
 
@@ -192,7 +192,7 @@ def compute_coauthor_graph(pred_list):
     return coauthor_graph
 
 
-def hits_reranking(coauthor_graph, pred_list, top_k=10):
+def hits_reranking(coauthor_graph, pred_list, faiss_scores, faiss_weight, hits_weight, top_k=10):
     # TODO: setup hyperparameters for hits reranking
     # rerank the papers based on hits
     hits = {}
@@ -202,12 +202,19 @@ def hits_reranking(coauthor_graph, pred_list, top_k=10):
                 hits[coauthor] = 0
             hits[coauthor] += 1
     # rerank the papers based on hits
-    for pred in pred_list:
+    hits_scores = []
+    for faiss_score, pred in zip(faiss_scores, pred_list):
         authors = pred['authors'].split(", ")
         score = 0
         for author in authors:
             if author in hits:
                 score += hits[author]
-        pred['score'] = score
+        hits_scores.append(score)
+    for i, score in enumerate(faiss_weight*faiss_scores + hits_weight*normalize(hits_scores)):
+        pred_list[i]["score"] = score
     pred_list = sorted(pred_list, key=lambda x: x['score'], reverse=True)
     return pred_list[:top_k]
+
+def normalize(lst):
+    lst = np.array(lst)
+    return lst / np.sum(lst)

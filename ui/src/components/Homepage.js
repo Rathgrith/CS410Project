@@ -1,8 +1,10 @@
-import { Box, TextInput, Title, Text, Button, Select, MultiSelect, Loader, Pagination, Stack, Card, Group, Badge, Anchor } from '@mantine/core';
+import { Box, TextInput, Title, Text, Button, Select, MultiSelect, Loader, Pagination, Stack, Card, Group, Badge, Anchor, ScrollArea, Space, Modal, NumberInput } from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
 import { useState, useEffect } from "react";
 import axios from "axios";
 
 function Homepage() {
+    const [opened, { open, close }] = useDisclosure(false);
     // Sessioning
     const [sessionId, setSessionId] = useState({ value: "New Session", label: "New Session" });
     const [allSessions, setAllSessions] = useState(["New Session"]);
@@ -16,7 +18,7 @@ function Homepage() {
     const [paperSearchValue, setPaperSearchValue] = useState([]);
     // Results
     // Pagination
-    const [itemsPerPage, setItemsPerPage] = useState(25);
+    const [itemsPerPage, setItemsPerPage] = useState(10);
     const [activePage, setPage] = useState(1);
     // Whether to show the Search Results section
     const [newSearch, setNewSearch] = useState(true);
@@ -24,6 +26,9 @@ function Homepage() {
     const [searching, setSearching] = useState(false);
     // List of all papers
     const [resultPapers, setResultPapers] = useState([]);
+    // Algorithm weights
+    const [faiss, setFAISS] = useState(1);
+    const [hits, setHITS] = useState(1);
 
     const renderSessionHistory = (data) => {
         setSessionHistory(data.map((item) => {
@@ -133,6 +138,8 @@ function Homepage() {
             keywords,
             selected_papers: selectedPapers,
             session_id: sessionId.value === "New Session"? null : sessionId.value,
+            faiss_weight: faiss,
+            hits_weight: hits,
         };
         setSearching(true);
         setNewSearch(false);
@@ -157,14 +164,20 @@ function Homepage() {
             <Anchor href={item.link} target="_blank">
                 <Text fw={500}>{item.title}</Text>
             </Anchor>
-            <Text size="xs" c="dimmed" mb="xs">
-                {item.authors}
-            </Text>
 
-            <Text size="sm" c="dimmed" mb="xs">
-                {item.abstract}
-            </Text>
+            <ScrollArea mah={50}>
+                <Text size="xs" c="dimmed" mb="xs">
+                    {item.authors}
+                </Text>
+            </ScrollArea>
 
+            <ScrollArea mah={150}>
+                <Text size="sm" c="dimmed" mb="xs">
+                    {item.abstract}
+                </Text>
+            </ScrollArea>
+
+            <Space h="md" />
             <Group>
                 <Badge color="blue" variant="light">Score: {Number((item.score).toFixed(3))}</Badge>
             </Group>
@@ -187,6 +200,19 @@ function Homepage() {
         marginTop: "30px", 
         marginBottom: "30px"
     }}>
+        <Modal opened={opened} onClose={close} title="Search Settings">
+            The score used to rank the documents is based on the assigned score from a variety of algorithms. You can adjust the weight multipliers here to adjust the consideration given to each algorithms' score.
+            <NumberInput
+                label="FAISS Search Score Weight"
+                value={faiss} onChange={setFAISS}
+                allowNegative={false}
+            />
+            <NumberInput
+                label="HITS Score Weight"
+                value={hits} onChange={setHITS}
+                allowNegative={false}
+            />
+        </Modal>
         <Text
             size="80px"
             fw={900} 
@@ -228,16 +254,30 @@ function Homepage() {
             clearable
             searchable
         />
-        <Button 
-            variant="filled" 
-            onClick={submit}
-            disabled={searching}
-        >
-            Search!
-        </Button>
+        <Space h="md"/>
+        <Group justify="space-between">
+            <Button 
+                variant="filled" 
+                onClick={submit}
+                disabled={searching}
+            >
+                Search!
+            </Button>
+            
+            <Button 
+                variant="outline"
+                onClick={open}
+            >
+                Search Settings
+            </Button>
+        </Group>
+
+        {!newSearch && <Space h="md"/>}
         {!newSearch && <Title order={2}>Search Results</Title>}
         {!newSearch && searching && <Loader color="blue" type="bars" />}
         {!newSearch && !searching && (resultPapers.length? paperList : "No results found.")}
+
+        {sessionHistory.length > 0 && <Space h="md"/>}
         {sessionHistory.length > 0 && <Title order={2}>Session History</Title>}
         {sessionHistory.length > 0 && <Stack>{sessionHistory}</Stack>}
     </Box>

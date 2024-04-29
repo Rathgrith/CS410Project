@@ -50,8 +50,14 @@ def get_session_history(session_id):
     } for row in query(lambda x: get_history_for_session(x, session_id))]
 
 @app.get("/query")
-def make_query(session_id: Annotated[int | None, Query()] = None, keywords: Annotated[str, Query()] = "", selected_papers: Annotated[list[str], Query()] = []):
-    print(session_id, keywords, selected_papers)
+def make_query(session_id: Annotated[int | None, Query()] = None, keywords: Annotated[str, Query()] = "", selected_papers: Annotated[list[str], Query()] = [], faiss_weight: Annotated[float, Query()] = 1.0, hits_weight: Annotated[float, Query()] = 1.0):
+    # Normalize weights
+    total_weight = faiss_weight + hits_weight
+    faiss_weight /= total_weight 
+    hits_weight /= total_weight 
+
+    print(session_id, keywords, selected_papers, faiss_weight, hits_weight)
+
     if len(selected_papers) == 0 and len(keywords) == 0:
         return []
     if session_id is None:
@@ -76,7 +82,7 @@ def make_query(session_id: Annotated[int | None, Query()] = None, keywords: Anno
     top_k = 500
     ids, scores = searcher.run_query(" ".join(full_query), top_k)
     coauthor_graph = compute_coauthor_graph(ids)
-    reranked_ids = hits_reranking(coauthor_graph, ids, top_k)
+    reranked_ids = hits_reranking(coauthor_graph, ids, scores, faiss_weight, hits_weight, top_k)
     
     relevant_docs = []
     for doc_struct in reranked_ids:
