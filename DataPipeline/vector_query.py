@@ -4,15 +4,15 @@ import os
 import json
 import re
 import time
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 import faiss
 from sentence_transformers import SentenceTransformer
 from sentence_transformers import CrossEncoder
 import networkx as nx
-import matplotlib
-matplotlib.use('Agg')
-PATH_TO_EMBEDS = "compressed_array.npz"
-PATH_TO_DF = "quick_lookup.csv"
+# import matplotlib
+# matplotlib.use('Agg')
+PATH_TO_EMBEDS = "../server/db/compressed_array.npz"
+PATH_TO_DF = "../server/db/quick_lookup.csv"
 class ArxivSearch:
     def __init__(self):
         self.model = SentenceTransformer("all-MiniLM-L6-v2")
@@ -29,33 +29,36 @@ class ArxivSearch:
         query_embedding = self.model.encode(query)
         scores, index_vals = self.faiss_index.search(query_embedding, top_k)
         index_vals_list = index_vals[0]
-        return index_vals_list, scores
+        return index_vals_list, scores[0]
     
-    def match_idx_to_id(self, index_vals_list):
+    def match_idx_to_id(self, index_vals_list, scores):
         pred_list = []
+        updated_scores = []
         
-        for idx in index_vals_list:
-            id = self.df_data.iloc[idx]['id']
-            author = self.df_data.iloc[idx]['authors']
-            if len(id.split(".")[0]) == 3:
-                id = "0" + id
-            pred_list.append({"id": id, "authors": author})
-        return pred_list
+        for score, idx in zip(scores, index_vals_list):
+            if idx < self.df_data.shape[0]:
+                id = self.df_data.iloc[idx]['id']
+                author = self.df_data.iloc[idx]['authors']
+                if len(id.split(".")[0]) == 3:
+                    id = "0" + id
+                pred_list.append({"id": id, "authors": author})
+                updated_scores.append(score)
+        return pred_list, np.array(updated_scores)
     
     def run_arxiv_search(self, query_text, num_results_to_print, top_k=300):
         pred_index_list, scores = self.run_faiss_search(query_text, top_k)
         # This returns a list of dicts with length equal to top_k
-        pred_list = self.match_idx_to_id(pred_index_list)
+        pred_list, scores = self.match_idx_to_id(pred_index_list, scores)
         return pred_list[:num_results_to_print], scores
     
     def run_query(self, query_text, num_results_to_print):
         timer = time.time()
         preds, scores = self.run_arxiv_search(query_text, num_results_to_print)
-        print("Results:")
-        for pred in preds:
-            # print arxiv link based on id
-            print(f"https://arxiv.org/abs/{pred['id']}")
-        print("Time taken:", time.time() - timer)
+        # print("Results:")
+        # for pred in preds:
+        #     # print arxiv link based on id
+        #     print(f"https://arxiv.org/abs/{pred['id']}")
+        # print("Time taken:", time.time() - timer)
         return preds, scores
         
 
@@ -70,14 +73,14 @@ def compute_coauthor_graph(pred_list):
             for coauthor in authors:
                 if author != coauthor:
                     coauthor_graph[author].add(coauthor)
-    # visualize the graph
-    G = nx.Graph()
-    for author, coauthors in coauthor_graph.items():
-        for coauthor in coauthors:
-            G.add_edge(author, coauthor)
-    # draw the graph
-    nx.draw(G, with_labels=True, font_size=1, node_size=20, font_color='black')
-    plt.savefig("coauthor_graph.png")
+    # # visualize the graph
+    # G = nx.Graph()
+    # for author, coauthors in coauthor_graph.items():
+    #     for coauthor in coauthors:
+    #         G.add_edge(author, coauthor)
+    # # draw the graph
+    # nx.draw(G, with_labels=True, font_size=1, node_size=20, font_color='black')
+    # plt.savefig("coauthor_graph.png")
     return coauthor_graph
 
 

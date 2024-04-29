@@ -1,17 +1,26 @@
+from ast import Return
 import pandas as pd
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
 from nltk.stem import PorterStemmer
 import string
 import re
+import numpy as np
 import json
 from collections import defaultdict, Counter
 import math
 import pickle
 from tqdm import tqdm
 import os
+import pickle
+
 N_PAPERS = 2440876
 
+# Load similarity model
+with open('./db/nn_model.pkl', 'rb') as f:
+    nn_model = pickle.load(f)
+all_papers_order = json.load(open('./db/all_papers_order.json'))
+normalized_user_ratings = np.array(json.load(open('./db/normalized_user_ratings.json')))
 
 # Inverse Document Frequency (IDF) calculation
 def idf(N, df):
@@ -143,21 +152,24 @@ class ArxivSearch:
         index_vals_list = index_vals[0]
         return index_vals_list, scores[0]
     
-    def match_idx_to_id(self, index_vals_list):
+    def match_idx_to_id(self, index_vals_list, scores):
         pred_list = []
+        updated_scores = []
         
-        for idx in index_vals_list:
-            id = self.df_data.iloc[idx]['id']
-            author = self.df_data.iloc[idx]['authors']
-            if len(id.split(".")[0]) == 3:
-                id = "0" + id
-            pred_list.append({"id": id, "authors": author})
-        return pred_list
+        for score, idx in zip(scores, index_vals_list):
+            if idx < self.df_data.shape[0]:
+                id = self.df_data.iloc[idx]['id']
+                author = self.df_data.iloc[idx]['authors']
+                if len(id.split(".")[0]) == 3:
+                    id = "0" + id
+                pred_list.append({"id": id, "authors": author})
+                updated_scores.append(score)
+        return pred_list, np.array(updated_scores)
     
     def run_arxiv_search(self, query_text, num_results_to_print, top_k=300):
         pred_index_list, scores = self.run_faiss_search(query_text, top_k)
         # This returns a list of dicts with length equal to top_k
-        pred_list = self.match_idx_to_id(pred_index_list)
+        pred_list, scores = self.match_idx_to_id(pred_index_list, scores)
         return pred_list[:num_results_to_print], scores
     
     def run_query(self, query_text, num_results_to_print):
@@ -203,7 +215,7 @@ def hits_reranking(coauthor_graph, pred_list, faiss_scores, faiss_weight, hits_w
             hits[coauthor] += 1
     # rerank the papers based on hits
     hits_scores = []
-    for faiss_score, pred in zip(faiss_scores, pred_list):
+    for pred in  pred_list:
         authors = pred['authors'].split(", ")
         score = 0
         for author in authors:
@@ -217,4 +229,28 @@ def hits_reranking(coauthor_graph, pred_list, faiss_scores, faiss_weight, hits_w
 
 def normalize(lst):
     lst = np.array(lst)
-    return lst / np.sum(lst)
+    total = np.sum(lst)
+    if not total:
+        total = 1
+    return lst / total
+
+def recommend(user_history, k=5, eps=0.00000000001):
+    user_history_ids = [row[-1] for row in user_history]
+    user_history_set = set(user_history_ids)
+    user = np.array([[paper in user_history_set for paper in all_papers_order]])
+    print("user has interacted with", np.sum(user), "of", len(all_papers_order), "in u2u dataset")
+    distance, neighbors = nn_model.kneighbors(user)
+
+    # Make it so the closer the neighbor (smaller the distance), the bigger the similarity score
+    similarities = normalize(max(distance) - distance + eps)[0]
+    neighbors = neighbors[0]
+
+    # Rating = Number of times the user has selected each item
+    mean_user_rating = normalize([user_history_ids.count(paper) for paper in all_papers_order])
+
+    collaborative_ratings = np.array([similarities@np.array([normalized_user_ratings[neighbor][paper_id] for neighbor in neighbors]) for paper_id in range(len(all_papers_order))])
+
+    ratings = mean_user_rating + collaborative_ratings
+
+    # Return the top k paper IDs
+    return [all_papers_order[paper_idx] for paper_idx in np.argsort(ratings)[-k:]]
