@@ -6,7 +6,7 @@ from typing import Annotated, List
 import json
 from urllib.parse import unquote
 from db.utils import preprocess
-from db.db_queries import create_session, create_session_history, get_history_for_session, get_paper_by_id, query, get_all_paper_titles, get_all_matching_paper_titles, get_preprocessed_papers_by_title, get_all_sessions
+from db.db_queries import delete_history_for_session, create_session, create_session_history, get_history_for_session, get_paper_by_id, query, get_all_paper_titles, get_all_matching_paper_titles, get_preprocessed_papers_by_title, get_all_sessions
 from utils import ArxivSearch, compute_coauthor_graph, hits_reranking, load_data, weighted_bm25_query
 
 searcher = ArxivSearch()
@@ -48,6 +48,14 @@ def get_session_history(session_id):
         "timestamp": row[2],
         "query": json.loads(row[3]),
     } for row in query(lambda x: get_history_for_session(x, session_id))]
+
+@app.get("/delete_session_history/{session_id}/{id}")
+def delete_session_history(session_id, id):
+    return [{
+        "id": row[0],
+        "timestamp": row[2],
+        "query": json.loads(row[3]),
+    } for row in query(lambda x: delete_history_for_session(x, session_id, id))]
 
 @app.get("/query")
 def make_query(session_id: Annotated[int | None, Query()] = None, keywords: Annotated[str, Query()] = "", selected_papers: Annotated[list[str], Query()] = [], faiss_weight: Annotated[float, Query()] = 1.0, hits_weight: Annotated[float, Query()] = 1.0):

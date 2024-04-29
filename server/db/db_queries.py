@@ -83,6 +83,18 @@ def get_history_for_session(conn, session_id):
     cur.execute(f"SELECT * FROM session_history WHERE session_id={session_id};")
     return cur.fetchall()
 
+def delete_history_for_session(conn, session_id, id):
+    """
+    Query all sessions
+    :param conn: the Connection object
+    :return:
+    """
+    cur = conn.cursor()
+    cur.execute(f"DELETE FROM session_history WHERE id={id};")
+    conn.commit()
+    cur.execute(f"SELECT * FROM session_history WHERE session_id={session_id};")
+    return cur.fetchall()
+
 def create_session(conn):
     """
     Create session

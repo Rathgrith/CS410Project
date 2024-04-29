@@ -1,6 +1,6 @@
 import { Box, TextInput, Title, Text, Button, Select, MultiSelect, Loader, Pagination, Stack, Card, Group, Badge, Anchor, ScrollArea, Space, Modal, NumberInput } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import axios from "axios";
 
 function Homepage() {
@@ -12,6 +12,7 @@ function Homepage() {
     const [sessionHistory, setSessionHistory] = useState([]);
     // User query
     const [keywords, setKeywords] = useState("");
+    const searchKeywords = useRef(""); 
     const [selectedPapers, setSelectedPapers] = useState([]);
     // Values for selected paper dropdown
     const [allPapers, setAllPapers] = useState([]);
@@ -30,6 +31,26 @@ function Homepage() {
     const [faiss, setFAISS] = useState(1);
     const [hits, setHITS] = useState(1);
 
+    // Function to handle keyword click
+    const handleKeywordClick =  (keyword) => {
+        // Update the keyword state (assuming 'setKeywords' is your state setter)
+        searchKeywords.current = keyword;
+        setKeywords(keyword);
+        submit();
+    }
+
+    // Handle Delete
+    const handleDelete = (id) => {
+        console.log('handleDelete', sessionId.value, id);
+        axios.get(
+            `http://localhost:8000/delete_session_history/${sessionId.value}/${id}`
+        )
+        .then((res) => {
+            console.log(res.data);
+            renderSessionHistory(res.data);
+        });
+    }
+
     const renderSessionHistory = (data) => {
         setSessionHistory(data.map((item) => {
             return (
@@ -37,9 +58,9 @@ function Homepage() {
                     {item.query.keywords.length > 0 && (
                         <Group mb="xs">
                             <Text fw={700}>Keywords:</Text>
-                            <Text size="sm" c="dimmed">
+                            <Badge color="gray" style={{ cursor: 'pointer' }} onClick={() => handleKeywordClick(item.query.keywords)}>
                                 {item.query.keywords}
-                            </Text>
+                            </Badge>
                         </Group>
                     )}
 
@@ -49,6 +70,8 @@ function Homepage() {
                             {item.query.selected_papers.map((v) => <Badge color="gray">{v}</Badge>)}
                         </Group>
                     )}
+
+                    <Button color="grey" size="xs" onClick={() => handleDelete(item.id)}>Delete</Button>
                 </Card>
             )
         }));   
@@ -135,7 +158,7 @@ function Homepage() {
     // Send query (keywords and relevant papers) to the backend
     const submit = async () => {
         const data = {
-            keywords,
+            keywords: searchKeywords.current,
             selected_papers: selectedPapers,
             session_id: sessionId.value === "New Session"? null : sessionId.value,
             faiss_weight: faiss,
@@ -237,7 +260,7 @@ function Homepage() {
             key="query"
             placeholder="Enter keywords here"
             value={keywords}
-            onChange={(event)=>{setKeywords(event.target.value)}}
+            onChange={(event)=>{setKeywords(event.target.value); searchKeywords.current = event.target.value;}}
             disabled={searching}
         />
         <MultiSelect
