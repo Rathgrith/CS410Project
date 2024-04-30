@@ -116,6 +116,29 @@ def get_history_for_session(conn, session_id):
     cur.execute(f"SELECT * FROM session_history WHERE session_id={session_id};")
     return cur.fetchall()
 
+
+def delete_history_for_session(conn, session_id, id):
+    """
+    Query all sessions
+    :param conn: the Connection object
+    :return:
+    """
+    cur = conn.cursor()
+    cur.execute(f"DELETE FROM session_history WHERE id={id};")
+    conn.commit()
+
+def delete_session_all(conn, session_id):
+    """
+    Delete all session history and session item
+    :param conn: the Connection object
+    :return:
+    """
+    cur = conn.cursor()
+    cur.execute(f"DELETE FROM session_history WHERE session_id={session_id};")
+    conn.commit()
+    cur.execute(f"DELETE FROM session WHERE id={session_id};")
+    conn.commit()
+
 def get_interactions(conn, session_id=None):
     """
     Query interactions by session_id (if provided)
@@ -142,7 +165,7 @@ def create_session(conn):
     conn.commit()
     return cur.lastrowid
 
-def create_session_history(conn, session_id, keywords, selected_papers):
+def create_session_history(conn, session_id, keywords, selected_papers, faiss_weight, hits_weight):
     """
     Create session
     :param conn: the Connection object
@@ -152,7 +175,7 @@ def create_session_history(conn, session_id, keywords, selected_papers):
     :return:
     """
     cur = conn.cursor()
-    cur.execute(f"INSERT INTO session_history (session_id, created_at, query) VALUES ({session_id}, '{datetime.datetime.now()}', '{json.dumps({'keywords': keywords, 'selected_papers': selected_papers})}');")
+    cur.execute(f"INSERT INTO session_history (session_id, created_at, query) VALUES ({session_id}, '{datetime.datetime.now()}', '{json.dumps({'keywords': keywords, 'selected_papers': selected_papers, 'faiss_weight': faiss_weight, 'hits_weight': hits_weight})}');")
     conn.commit()
     return cur.lastrowid
 

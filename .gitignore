@@ -2,3 +2,5 @@ node_modules/
 __pycache__/
 arxiv-metadata-oai-snapshot.json
 database.db
+server/.DS_Store
+.DS_Store

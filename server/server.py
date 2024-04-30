@@ -5,8 +5,10 @@ from pydantic import BaseModel
 from typing import Annotated, List
 import json
 from urllib.parse import unquote
-from db.db_queries import create_interaction, create_session, create_session_history, get_all_papers, get_history_for_session, get_interactions, get_paper_by_id, get_papers_by_id, get_papers_by_title, query, get_all_paper_titles, get_all_matching_paper_titles, get_preprocessed_papers_by_title, get_all_sessions
+from db.utils import preprocess
+from db.db_queries import delete_session_all, delete_history_for_session, create_interaction, create_session, create_session_history, get_all_papers, get_history_for_session, get_interactions, get_paper_by_id, get_papers_by_id, get_papers_by_title, query, get_all_paper_titles, get_all_matching_paper_titles, get_preprocessed_papers_by_title, get_all_sessions
 from utils import ArxivSearch, compute_coauthor_graph, hits_reranking, load_data, recommend, weighted_bm25_query
+
 
 searcher = ArxivSearch()
 
@@ -67,6 +69,15 @@ def get_session_history(session_id):
         "query": json.loads(row[3]),
     } for row in query(lambda x: get_history_for_session(x, session_id))]
 
+@app.get("/delete_session/{session_id}")
+def delete_session(session_id):
+    query(lambda x: delete_session_all(x, session_id))
+
+@app.get("/delete_session_history/{session_id}/{id}")
+def delete_session_history(session_id, id):
+    query(lambda x: delete_history_for_session(x, session_id, id))
+    return get_session_history(session_id)
+
 @app.get("/session/{session_id}/select/{paper_id}")
 def make_interaction(session_id, paper_id):
     assert session_id
@@ -75,8 +86,11 @@ def make_interaction(session_id, paper_id):
     assert session_id > -1
     query(lambda x: create_interaction(x, session_id, paper_id))
 
+
 @app.get("/query")
 def make_query(session_id: Annotated[int | None, Query()] = None, keywords: Annotated[str, Query()] = "", selected_papers: Annotated[list[str], Query()] = [], faiss_weight: Annotated[float, Query()] = 1.0, hits_weight: Annotated[float, Query()] = 1.0):
+    raw_faiss_weight = faiss_weight
+    raw_hits_weight = hits_weight
     # Normalize weights
     total_weight = faiss_weight + hits_weight
     faiss_weight /= total_weight 
@@ -128,7 +142,7 @@ def make_query(session_id: Annotated[int | None, Query()] = None, keywords: Anno
                 "authors": authors,
                 "abstract": abstract,
             })
-    query(lambda x: create_session_history(x, session_id, keywords, selected_papers))
+    query(lambda x: create_session_history(x, session_id, keywords, selected_papers, raw_faiss_weight, raw_hits_weight))
     return { "docs": relevant_docs, "session_id": str(session_id) }
 
 
