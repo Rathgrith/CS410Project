@@ -27,8 +27,10 @@ function Homepage() {
     const [searching, setSearching] = useState(false);
     // List of all papers
     const [resultPapers, setResultPapers] = useState([]);
+    // List of recommended papers
+    const [recPapers, setRecPapers] = useState([]);
     // Algorithm weights
-    const [faiss, setFAISS] = useState(1);
+    const [faiss, setFAISS] = useState(3);
     const [hits, setHITS] = useState(1);
 
     // Function to handle keyword click
@@ -99,6 +101,26 @@ function Homepage() {
             });
             setAllSessions(preprocessedSessions);
         });
+        axios.get(
+            `http://localhost:8000/papers/recommend`
+        )
+        .then((res) => {
+            setRecPapers(res.data);
+        });
+        axios.get(
+            `http://localhost:8000/sessions`
+        )
+        .then((res) => {
+            const preprocessedSessions = res.data.map((data) => ({ 
+                value: data, 
+                label: `Session ${data}` 
+            }))
+            preprocessedSessions.push({ 
+                value: "New Session", 
+                label: "New Session" 
+            });
+            setAllSessions(preprocessedSessions);
+        });
         if (sessionId.value !== "New Session") {
             axios.get(
                 `http://localhost:8000/session/${sessionId.value}`
@@ -112,6 +134,21 @@ function Homepage() {
 
     // Update session metadata
     useEffect(() => {
+        const session_id = sessionId.value === "New Session"? -1 : sessionId.value
+        setRecPapers([]);
+        axios.get(
+            `http://localhost:8000/papers/recommend`,
+            {
+                params: { session_id },
+                paramsSerializer: {
+                    indexes: null, // no brackets at all
+                },
+            }
+        )
+        .then((res) => {
+            setRecPapers(res.data);
+        });
+
         axios.get(
             `http://localhost:8000/sessions`
         )
@@ -143,7 +180,12 @@ function Homepage() {
             // Every time `paperSearchValue` is updated, query backend to update the data to filter from.
             axios.get(
                 `http://localhost:8000/papers`,
-                { paper_query: paperSearchValue }
+                { 
+                    params: { paper_query: paperSearchValue },
+                    paramsSerializer: {
+                        indexes: null, // no brackets at all
+                    },
+                }
             )
             .then((res) => {
                 setAllPapers(res.data);
@@ -154,6 +196,13 @@ function Homepage() {
     useEffect(() => {
         setNewSearch(true);
     }, [keywords]);
+
+    const saveInteraction = (paper_id) => {
+        const session_id = sessionId.value === "New Session"? -1 : sessionId.value;
+        axios.get(
+            `http://localhost:8000/session/${session_id}/select/${paper_id}`,
+        );
+    };
 
     // Send query (keywords and relevant papers) to the backend
     const submit = async () => {
@@ -180,11 +229,26 @@ function Homepage() {
             setSessionId({ value: response.data.session_id, label: `Session ${response.data.session_id}` });
             setSearching(false);
         });
+        
+        const session_id = sessionId.value === "New Session"? -1 : sessionId.value;
+        setRecPapers([]);
+        axios.get(
+            `http://localhost:8000/papers/recommend`,
+            {
+                params: { session_id },
+                paramsSerializer: {
+                    indexes: null, // no brackets at all
+                },
+            }
+        )
+        .then((res) => {
+            setRecPapers(res.data);
+        });
     };
 
     const items = resultPapers.slice((activePage-1)*itemsPerPage, (activePage)*itemsPerPage).map((item) => (
         <Card shadow="sm" padding="lg" radius="md" withBorder key={item.link}>
-            <Anchor href={item.link} target="_blank">
+            <Anchor onClick={() => {saveInteraction(item.id)}} href={item.link} target="_blank">
                 <Text fw={500}>{item.title}</Text>
             </Anchor>
 
@@ -212,7 +276,19 @@ function Homepage() {
             <Stack>
                 {items}
             </Stack>
-            <Pagination total={resultPapers.length} value={activePage} onChange={setPage} mt="sm" />
+            <Pagination total={resultPapers.length / itemsPerPage} value={activePage} onChange={setPage} mt="sm" />
+        </>
+    );
+
+    const recPapersList = (
+        <>
+            <Stack gap="xs">
+                {recPapers.map((item) => (
+                    <Anchor onClick={() => {saveInteraction(item.id)}} href={item.link} target="_blank">
+                        <Text size="sm">{item.title}</Text>
+                    </Anchor>
+                ))}
+            </Stack>
         </>
     );
 
@@ -255,6 +331,12 @@ function Homepage() {
             data={allSessions}
             disabled={searching}
         />
+
+        {recPapers.length > 0 && <Space h="md"/>}
+        {recPapers.length > 0 && <Title order={2}>Recommendations</Title>}
+        {recPapers.length > 0 && recPapersList}
+        {recPapers.length > 0 && <Space h="md"/>}
+
         <TextInput
             label="Query"
             key="query"

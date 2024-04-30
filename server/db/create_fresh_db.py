@@ -69,6 +69,14 @@ try:
     ); """
     create_table(conn, sql_create_papers_table)
 
+    sql_interactions_table = """ CREATE TABLE IF NOT EXISTS interactions (
+        id integer NOT NULL PRIMARY KEY,
+        created_at timestamp NOT NULL,
+        session_id integer NOT NULL,
+        paper_id text NOT NULL
+    ); """
+    create_table(conn, sql_interactions_table)
+
     sql_create_session_table = """ CREATE TABLE IF NOT EXISTS session (
         id integer NOT NULL PRIMARY KEY
     ); """
